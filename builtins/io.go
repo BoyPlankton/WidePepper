@@ -52,6 +52,7 @@ func (m *FileHandleManager) Close() error {
 	m.handles = make(map[int]*FileHandle)
 	return firstErr
 }
+
 // PounceFile opens a file for reading or writing (pounce = open)
 func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error) {
 	var file *os.File
@@ -173,7 +174,7 @@ func (m *FileHandleManager) NuzzleClose(handleID int) error {
 }
 
 // FetchURL performs a GET request to a URL (fetch = get)
-func (m *FileHandleManager) FetchURL(url string) (string, error) {
+func FetchURL(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("HTTP GET failed: %w", err)
@@ -193,7 +194,7 @@ func (m *FileHandleManager) FetchURL(url string) (string, error) {
 }
 
 // CoughUpData performs a POST request to a URL (cough up = send data)
-func (m *FileHandleManager) CoughUpData(url string, contentType string, data string) (string, error) {
+func CoughUpData(url string, contentType string, data string) (string, error) {
 	resp, err := http.Post(url, contentType, strings.NewReader(data))
 	if err != nil {
 		return "", fmt.Errorf("HTTP POST failed: %w", err)
