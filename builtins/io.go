@@ -218,6 +218,7 @@ func validateFilePath(filePath string) error {
 	cleanPath := filepath.Clean(absPath)
 
 	// List of protected directories that should never be deleted from
+	// Unix/Linux protected directories
 	protectedDirs := []string{
 		"/etc",
 		"/bin",
@@ -235,8 +236,21 @@ func validateFilePath(filePath string) error {
 		"/root",
 	}
 
+	// Windows protected directories
+	if filepath.Separator == '\\' {
+		protectedDirs = []string{
+			"C:\\Windows",
+			"C:\\Program Files",
+			"C:\\Program Files (x86)",
+			"C:\\ProgramData",
+			"C:\\System Volume Information",
+			"C:\\$Recycle.Bin",
+		}
+	}
+
 	// Check if the file is in a protected directory
 	for _, protected := range protectedDirs {
+		// Check if path is within protected directory or is the protected directory itself
 		if strings.HasPrefix(cleanPath, protected+string(filepath.Separator)) || cleanPath == protected {
 			return fmt.Errorf("cannot delete files in protected directory: %s", protected)
 		}
