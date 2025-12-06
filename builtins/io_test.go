@@ -60,13 +60,31 @@ func TestFileHandleManager_ReadFile(t *testing.T) {
 	}
 	defer manager.NuzzleClose(handleID)
 
+	// Read first line
 	line, err := manager.LapLine(handleID)
 	if err != nil {
-		t.Fatalf("failed to read line: %v", err)
+		t.Fatalf("failed to read line 1: %v", err)
 	}
-
 	if line != "Line 1" {
 		t.Errorf("expected 'Line 1', got %q", line)
+	}
+
+	// Read second line
+	line, err = manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read line 2: %v", err)
+	}
+	if line != "Line 2" {
+		t.Errorf("expected 'Line 2', got %q", line)
+	}
+
+	// Read third line
+	line, err = manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read line 3: %v", err)
+	}
+	if line != "Line 3" {
+		t.Errorf("expected 'Line 3', got %q", line)
 	}
 }
 
