@@ -55,7 +55,9 @@ func NewFileHandleManager() *FileHandleManager {
 	}
 }
 
-// validatePath sanitizes and validates a file path to prevent path traversal attacks
+// validatePath sanitizes and canonicalizes a file path.
+// It converts the path to an absolute form and removes redundant separators.
+// Note: This does NOT restrict access to sensitive directories.
 func validatePath(path string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("path cannot be empty")
@@ -75,7 +77,6 @@ func validatePath(path string) (string, error) {
 	// 2. Redundant separators are removed
 	// 3. "." and ".." are resolved
 	// 4. The path is converted to an absolute path
-	// This prevents path traversal attacks by ensuring the path is canonical
 
 	return absPath, nil
 }
