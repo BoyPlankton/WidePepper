@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -225,9 +226,36 @@ func (m *FileHandleManager) NuzzleClose(handleID int) error {
 	return nil
 }
 
+// validateURL checks if a URL is safe to access (prevents SSRF attacks)
+// Only allows http and https schemes
+func validateURL(rawURL string) error {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	// Only allow http and https schemes
+	scheme := strings.ToLower(parsedURL.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("invalid URL scheme '%s': only http and https are allowed", parsedURL.Scheme)
+	}
+
+	// Ensure host is present
+	if parsedURL.Host == "" {
+		return fmt.Errorf("URL must have a host")
+	}
+
+	return nil
+}
+
 // FetchURL performs a GET request to a URL (fetch = get)
-func (m *FileHandleManager) FetchURL(url string) (string, error) {
-	resp, err := http.Get(url)
+func (m *FileHandleManager) FetchURL(targetURL string) (string, error) {
+	// Validate URL to prevent SSRF attacks
+	if err := validateURL(targetURL); err != nil {
+		return "", err
+	}
+
+	resp, err := http.Get(targetURL)
 	if err != nil {
 		return "", fmt.Errorf("HTTP GET failed: %w", err)
 	}
@@ -246,8 +274,13 @@ func (m *FileHandleManager) FetchURL(url string) (string, error) {
 }
 
 // CoughUpData performs a POST request to a URL (cough up = send data)
-func (m *FileHandleManager) CoughUpData(url string, contentType string, data string) (string, error) {
-	resp, err := http.Post(url, contentType, strings.NewReader(data))
+func (m *FileHandleManager) CoughUpData(targetURL string, contentType string, data string) (string, error) {
+	// Validate URL to prevent SSRF attacks
+	if err := validateURL(targetURL); err != nil {
+		return "", err
+	}
+
+	resp, err := http.Post(targetURL, contentType, strings.NewReader(data))
 	if err != nil {
 		return "", fmt.Errorf("HTTP POST failed: %w", err)
 	}
