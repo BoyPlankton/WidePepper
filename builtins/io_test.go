@@ -88,6 +88,50 @@ func TestFileHandleManager_ReadFile(t *testing.T) {
 	}
 }
 
+func TestFileHandleManager_ReadMultipleLines(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "multiline_test.txt")
+
+	err := os.WriteFile(testFile, []byte("First line\nSecond line\nThird line\n"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	handleID, err := manager.PounceFile(testFile, "r")
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer manager.NuzzleClose(handleID)
+
+	// Read first line
+	line1, err := manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read first line: %v", err)
+	}
+	if line1 != "First line" {
+		t.Errorf("expected 'First line', got %q", line1)
+	}
+
+	// Read second line
+	line2, err := manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read second line: %v", err)
+	}
+	if line2 != "Second line" {
+		t.Errorf("expected 'Second line', got %q", line2)
+	}
+
+	// Read third line
+	line3, err := manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read third line: %v", err)
+	}
+	if line3 != "Third line" {
+		t.Errorf("expected 'Third line', got %q", line3)
+	}
+}
+
 func TestFileHandleManager_ReadAll(t *testing.T) {
 	manager := NewFileHandleManager()
 	testDir := t.TempDir()
@@ -112,6 +156,44 @@ func TestFileHandleManager_ReadAll(t *testing.T) {
 
 	if content != expectedContent {
 		t.Errorf("expected %q, got %q", expectedContent, content)
+	}
+}
+
+func TestFileHandleManager_MixedReadMethods(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "mixed_test.txt")
+
+	content := "First line\nSecond line\nThird line\nFourth line"
+	err := os.WriteFile(testFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	handleID, err := manager.PounceFile(testFile, "r")
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer manager.NuzzleClose(handleID)
+
+	// Read first line with LapLine
+	line1, err := manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read first line: %v", err)
+	}
+	if line1 != "First line" {
+		t.Errorf("expected 'First line', got %q", line1)
+	}
+
+	// Read the rest with DevourFile
+	rest, err := manager.DevourFile(handleID)
+	if err != nil {
+		t.Fatalf("failed to devour rest: %v", err)
+	}
+
+	expectedRest := "Second line\nThird line\nFourth line"
+	if rest != expectedRest {
+		t.Errorf("expected %q, got %q", expectedRest, rest)
 	}
 }
 
