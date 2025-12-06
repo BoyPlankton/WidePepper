@@ -338,6 +338,10 @@ func SniffFile(filePath string) bool {
 	if err != nil {
 		return false
 	}
+	// Check for protected directories
+	if err := validateFilePath(validPath); err != nil {
+		return false
+	}
 
 	_, err = os.Stat(validPath)
 	return err == nil
