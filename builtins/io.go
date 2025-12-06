@@ -16,12 +16,13 @@ import (
 
 // FileHandle represents an open file or network resource
 type FileHandle struct {
-	ID        int
-	Reader    io.Reader
-	Writer    io.Writer
-	Closer    io.Closer
-	FilePath  string
-	IsNetwork bool
+	ID         int
+	Reader     io.Reader
+	Writer     io.Writer
+	Closer     io.Closer
+	FilePath   string
+	IsNetwork  bool
+	BufReader  *bufio.Reader
 }
 
 // FileHandleManager manages open file and network handles
@@ -80,7 +81,7 @@ func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error
 	id := m.nextID
 	m.nextID++
 
-	m.handles[id] = &FileHandle{
+	handle := &FileHandle{
 		ID:        id,
 		Reader:    file,
 		Writer:    file,
@@ -88,6 +89,13 @@ func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error
 		FilePath:  filePath,
 		IsNetwork: false,
 	}
+
+	// Initialize buffered reader for read mode
+	if strings.ToLower(mode) == "r" || strings.ToLower(mode) == "read" {
+		handle.BufReader = bufio.NewReader(file)
+	}
+
+	m.handles[id] = handle
 
 	return id, nil
 }
@@ -99,7 +107,15 @@ func (m *FileHandleManager) LapLine(handleID int) (string, error) {
 		return "", fmt.Errorf("invalid file handle: %d", handleID)
 	}
 
-	reader := bufio.NewReader(handle.Reader)
+	// Use the buffered reader if available, otherwise create one
+	var reader *bufio.Reader
+	if handle.BufReader != nil {
+		reader = handle.BufReader
+	} else {
+		reader = bufio.NewReader(handle.Reader)
+		handle.BufReader = reader
+	}
+
 	line, err := reader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return "", fmt.Errorf("error reading file: %w", err)
