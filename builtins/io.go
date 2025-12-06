@@ -38,6 +38,20 @@ func NewFileHandleManager() *FileHandleManager {
 	}
 }
 
+// Close closes all open file handles managed by FileHandleManager.
+// It implements the io.Closer interface.
+func (m *FileHandleManager) Close() error {
+	var firstErr error
+	for id, handle := range m.handles {
+		if handle != nil && handle.Closer != nil {
+			if err := handle.Closer.Close(); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("error closing handle %d (%s): %w", id, handle.FilePath, err)
+			}
+		}
+	}
+	m.handles = make(map[int]*FileHandle)
+	return firstErr
+}
 // PounceFile opens a file for reading or writing (pounce = open)
 func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error) {
 	var file *os.File
