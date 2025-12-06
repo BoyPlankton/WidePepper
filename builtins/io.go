@@ -22,6 +22,7 @@ type FileHandle struct {
 	Closer    io.Closer
 	FilePath  string
 	IsNetwork bool
+	BufReader *bufio.Reader // Persistent buffered reader for line-by-line reads
 }
 
 // FileHandleManager manages open file and network handles
@@ -99,8 +100,12 @@ func (m *FileHandleManager) LapLine(handleID int) (string, error) {
 		return "", fmt.Errorf("invalid file handle: %d", handleID)
 	}
 
-	reader := bufio.NewReader(handle.Reader)
-	line, err := reader.ReadString('\n')
+	// Create buffered reader only once and reuse it
+	if handle.BufReader == nil {
+		handle.BufReader = bufio.NewReader(handle.Reader)
+	}
+
+	line, err := handle.BufReader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return "", fmt.Errorf("error reading file: %w", err)
 	}
