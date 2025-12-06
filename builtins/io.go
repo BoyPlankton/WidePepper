@@ -44,6 +44,9 @@ func NewFileHandleManager() *FileHandleManager {
 	return &FileHandleManager{
 		handles: make(map[int]*FileHandle),
 		nextID:  1,
+		httpClient: &http.Client{
+			Timeout: DefaultHTTPTimeout,
+		},
 	}
 }
 
