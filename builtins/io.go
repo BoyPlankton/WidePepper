@@ -164,13 +164,11 @@ func (m *FileHandleManager) NuzzleClose(handleID int) error {
 		m.mu.Unlock()
 		return fmt.Errorf("invalid file handle: %d", handleID)
 	}
-
 	delete(m.handles, handleID)
 	m.mu.Unlock()
 
 	if handle.Closer != nil {
-		err := handle.Closer.Close()
-		if err != nil {
+		if err := handle.Closer.Close(); err != nil {
 			return fmt.Errorf("error closing file: %w", err)
 		}
 	}

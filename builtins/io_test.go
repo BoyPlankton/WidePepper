@@ -4,6 +4,7 @@
 package builtins
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -285,7 +286,7 @@ func TestFileHandleManager_ConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			testFile := filepath.Join(testDir, "concurrent_test_"+string(rune('A'+id))+".txt")
+			testFile := filepath.Join(testDir, fmt.Sprintf("concurrent_test_%d.txt", id))
 
 			// Open file
 			handleID, err := manager.PounceFile(testFile, "w")
