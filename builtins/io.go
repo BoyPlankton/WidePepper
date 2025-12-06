@@ -288,7 +288,7 @@ func (m *FileHandleManager) FetchURL(targetURL string) (string, error) {
 		return "", err
 	}
 
-	resp, err := http.Get(targetURL)
+	resp, err := m.httpClient.Get(targetURL)
 	if err != nil {
 		return "", fmt.Errorf("HTTP GET failed: %w", err)
 	}
@@ -313,7 +313,7 @@ func (m *FileHandleManager) CoughUpData(targetURL string, contentType string, da
 		return "", err
 	}
 
-	resp, err := http.Post(targetURL, contentType, strings.NewReader(data))
+	resp, err := m.httpClient.Post(targetURL, contentType, strings.NewReader(data))
 	if err != nil {
 		return "", fmt.Errorf("HTTP POST failed: %w", err)
 	}
