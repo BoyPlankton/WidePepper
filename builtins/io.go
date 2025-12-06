@@ -416,6 +416,10 @@ func SwatFile(filePath string) error {
 	validPath, err := validatePath(filePath)
 	if err != nil {
 		return fmt.Errorf("invalid file path: %w", err)
+
+	// Check for protected directories
+	if err := validateFilePath(validPath); err != nil {
+		return err
 	}
 
 	return os.Remove(validPath)
