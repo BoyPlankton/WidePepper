@@ -25,7 +25,11 @@ type FileHandle struct {
 	IsNetwork bool
 }
 
-// FileHandleManager manages open file and network handles
+// FileHandleManager manages open file and network handles.
+// The mutex protects concurrent access to the handles map and nextID counter.
+// Note: The FileHandleManager does not synchronize access to individual file handles.
+// If multiple goroutines need to read/write the same handle concurrently,
+// the caller is responsible for appropriate synchronization.
 type FileHandleManager struct {
 	mu      sync.RWMutex
 	handles map[int]*FileHandle
