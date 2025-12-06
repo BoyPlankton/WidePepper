@@ -5,6 +5,8 @@ package builtins
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -378,6 +380,240 @@ func TestFileHandleManager_WriteString(t *testing.T) {
 	}
 }
 
+// Network I/O tests
+
+func TestFetchURL_Success(t *testing.T) {
+	manager := NewFileHandleManager()
+	expectedResponse := "Hello from test server"
+
+	// Create a mock HTTP server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET request, got %s", r.Method)
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, expectedResponse)
+	}))
+	defer server.Close()
+
+	// Test FetchURL
+	response, err := manager.FetchURL(server.URL)
+	if err != nil {
+		t.Fatalf("FetchURL failed: %v", err)
+	}
+
+	if response != expectedResponse {
+		t.Errorf("expected %q, got %q", expectedResponse, response)
+	}
+}
+
+func TestFetchURL_HTTPError(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Create a mock HTTP server that returns an error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, "Not Found")
+	}))
+	defer server.Close()
+
+	// Test FetchURL with error response
+	_, err := manager.FetchURL(server.URL)
+	if err == nil {
+		t.Error("expected error for HTTP 404, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("expected error to contain '404', got %v", err)
+	}
+}
+
+func TestFetchURL_NetworkError(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Use an invalid URL to trigger a network error
+	_, err := manager.FetchURL("http://invalid-host-that-does-not-exist-12345.com")
+	if err == nil {
+		t.Error("expected network error, got nil")
+	}
+}
+
+func TestFetchURL_MultipleStatusCodes(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	testCases := []struct {
+		statusCode int
+		expectErr  bool
+	}{
+		{http.StatusOK, false},
+		{http.StatusBadRequest, true},
+		{http.StatusUnauthorized, true},
+		{http.StatusInternalServerError, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Status_%d", tc.statusCode), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+				fmt.Fprint(w, "test response")
+			}))
+			defer server.Close()
+
+			_, err := manager.FetchURL(server.URL)
+			if tc.expectErr && err == nil {
+				t.Errorf("expected error for status %d, got nil", tc.statusCode)
+			}
+			if !tc.expectErr && err != nil {
+				t.Errorf("expected no error for status %d, got %v", tc.statusCode, err)
+			}
+		})
+	}
+}
+
+func TestCoughUpData_Success_StatusOK(t *testing.T) {
+	manager := NewFileHandleManager()
+	expectedResponse := "Data received"
+	testData := "test payload"
+	testContentType := "application/json"
+
+	// Create a mock HTTP server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
+		if r.Header.Get("Content-Type") != testContentType {
+			t.Errorf("expected Content-Type %s, got %s", testContentType, r.Header.Get("Content-Type"))
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, expectedResponse)
+	}))
+	defer server.Close()
+
+	// Test CoughUpData
+	response, err := manager.CoughUpData(server.URL, testContentType, testData)
+	if err != nil {
+		t.Fatalf("CoughUpData failed: %v", err)
+	}
+
+	if response != expectedResponse {
+		t.Errorf("expected %q, got %q", expectedResponse, response)
+	}
+}
+
+func TestCoughUpData_Success_StatusCreated(t *testing.T) {
+	manager := NewFileHandleManager()
+	expectedResponse := "Resource created"
+	testData := "create new resource"
+
+	// Create a mock HTTP server that returns 201
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, expectedResponse)
+	}))
+	defer server.Close()
+
+	// Test CoughUpData with 201 response
+	response, err := manager.CoughUpData(server.URL, "text/plain", testData)
+	if err != nil {
+		t.Fatalf("CoughUpData failed: %v", err)
+	}
+
+	if response != expectedResponse {
+		t.Errorf("expected %q, got %q", expectedResponse, response)
+	}
+}
+
+func TestCoughUpData_HTTPError(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Create a mock HTTP server that returns an error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Bad Request")
+	}))
+	defer server.Close()
+
+	// Test CoughUpData with error response
+	_, err := manager.CoughUpData(server.URL, "text/plain", "test data")
+	if err == nil {
+		t.Error("expected error for HTTP 400, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "400") {
+		t.Errorf("expected error to contain '400', got %v", err)
+	}
+}
+
+func TestCoughUpData_NetworkError(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Use an invalid URL to trigger a network error
+	_, err := manager.CoughUpData("http://invalid-host-that-does-not-exist-12345.com", "text/plain", "data")
+	if err == nil {
+		t.Error("expected network error, got nil")
+	}
+}
+
+func TestCoughUpData_DifferentContentTypes(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	contentTypes := []string{
+		"application/json",
+		"application/xml",
+		"text/plain",
+		"text/html",
+	}
+
+	for _, ct := range contentTypes {
+		t.Run(ct, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Content-Type") != ct {
+					t.Errorf("expected Content-Type %s, got %s", ct, r.Header.Get("Content-Type"))
+				}
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, "OK")
+			}))
+			defer server.Close()
+
+			_, err := manager.CoughUpData(server.URL, ct, "test data")
+			if err != nil {
+				t.Errorf("CoughUpData failed for content type %s: %v", ct, err)
+			}
+		})
+	}
+}
+
+func TestCoughUpData_MultipleStatusCodes(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	testCases := []struct {
+		statusCode int
+		expectErr  bool
+	}{
+		{http.StatusOK, false},
+		{http.StatusCreated, false},
+		{http.StatusBadRequest, true},
+		{http.StatusUnauthorized, true},
+		{http.StatusNotFound, true},
+		{http.StatusInternalServerError, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Status_%d", tc.statusCode), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+				fmt.Fprint(w, "test response")
+			}))
+			defer server.Close()
+
+			_, err := manager.CoughUpData(server.URL, "text/plain", "test data")
+			if tc.expectErr && err == nil {
+				t.Errorf("expected error for status %d, got nil", tc.statusCode)
+			}
+			if !tc.expectErr && err != nil {
+				t.Errorf("expected no error for status %d, got %v", tc.statusCode, err)
+			}
+		})
 // TestFileHandleManager_ConcurrentAccess tests thread-safety of the FileHandleManager
 func TestFileHandleManager_ConcurrentAccess(t *testing.T) {
 	manager := NewFileHandleManager()
