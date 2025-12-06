@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 )
 
 // FileHandle represents an open file or network resource
@@ -26,6 +27,7 @@ type FileHandle struct {
 
 // FileHandleManager manages open file and network handles
 type FileHandleManager struct {
+	mu      sync.RWMutex
 	handles map[int]*FileHandle
 	nextID  int
 }
@@ -63,6 +65,7 @@ func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error
 		return 0, fmt.Errorf("invalid file mode: %s (use 'r', 'w', or 'a')", mode)
 	}
 
+	m.mu.Lock()
 	id := m.nextID
 	m.nextID++
 
@@ -74,13 +77,17 @@ func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error
 		FilePath:  filePath,
 		IsNetwork: false,
 	}
+	m.mu.Unlock()
 
 	return id, nil
 }
 
 // LapLine reads a single line from a file handle (lap = drink/read)
 func (m *FileHandleManager) LapLine(handleID int) (string, error) {
+	m.mu.RLock()
 	handle, ok := m.handles[handleID]
+	m.mu.RUnlock()
+
 	if !ok {
 		return "", fmt.Errorf("invalid file handle: %d", handleID)
 	}
@@ -97,7 +104,10 @@ func (m *FileHandleManager) LapLine(handleID int) (string, error) {
 
 // DevourFile reads entire contents of a file (devour = eat entirely)
 func (m *FileHandleManager) DevourFile(handleID int) (string, error) {
+	m.mu.RLock()
 	handle, ok := m.handles[handleID]
+	m.mu.RUnlock()
+
 	if !ok {
 		return "", fmt.Errorf("invalid file handle: %d", handleID)
 	}
@@ -112,7 +122,10 @@ func (m *FileHandleManager) DevourFile(handleID int) (string, error) {
 
 // ScratchLine writes a line to a file handle (scratch = write)
 func (m *FileHandleManager) ScratchLine(handleID int, content string) error {
+	m.mu.RLock()
 	handle, ok := m.handles[handleID]
+	m.mu.RUnlock()
+
 	if !ok {
 		return fmt.Errorf("invalid file handle: %d", handleID)
 	}
@@ -127,7 +140,10 @@ func (m *FileHandleManager) ScratchLine(handleID int, content string) error {
 
 // ScratchString writes a string to a file handle without newline (scratch = write)
 func (m *FileHandleManager) ScratchString(handleID int, content string) error {
+	m.mu.RLock()
 	handle, ok := m.handles[handleID]
+	m.mu.RUnlock()
+
 	if !ok {
 		return fmt.Errorf("invalid file handle: %d", handleID)
 	}
@@ -142,14 +158,18 @@ func (m *FileHandleManager) ScratchString(handleID int, content string) error {
 
 // NuzzleClose closes a file handle (nuzzle = close affectionately)
 func (m *FileHandleManager) NuzzleClose(handleID int) error {
+	m.mu.Lock()
 	handle, ok := m.handles[handleID]
 	if !ok {
+		m.mu.Unlock()
 		return fmt.Errorf("invalid file handle: %d", handleID)
 	}
 
+	delete(m.handles, handleID)
+	m.mu.Unlock()
+
 	if handle.Closer != nil {
 		err := handle.Closer.Close()
-		delete(m.handles, handleID)
 		if err != nil {
 			return fmt.Errorf("error closing file: %w", err)
 		}

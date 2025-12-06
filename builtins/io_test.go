@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -267,5 +268,57 @@ func TestFileHandleManager_WriteString(t *testing.T) {
 	expected := "No newline here"
 	if string(content) != expected {
 		t.Errorf("expected %q, got %q", expected, string(content))
+	}
+}
+
+// TestFileHandleManager_ConcurrentAccess tests thread-safety of the FileHandleManager
+func TestFileHandleManager_ConcurrentAccess(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+	numGoroutines := 10
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	// Concurrently open, write, and close files
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+
+			testFile := filepath.Join(testDir, "concurrent_test_"+string(rune('A'+id))+".txt")
+
+			// Open file
+			handleID, err := manager.PounceFile(testFile, "w")
+			if err != nil {
+				t.Errorf("goroutine %d: failed to open file: %v", id, err)
+				return
+			}
+
+			// Write to file
+			err = manager.ScratchLine(handleID, "Hello from goroutine")
+			if err != nil {
+				t.Errorf("goroutine %d: failed to write: %v", id, err)
+				return
+			}
+
+			// Close file
+			err = manager.NuzzleClose(handleID)
+			if err != nil {
+				t.Errorf("goroutine %d: failed to close: %v", id, err)
+				return
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify all files were created
+	entries, err := os.ReadDir(testDir)
+	if err != nil {
+		t.Fatalf("failed to read test directory: %v", err)
+	}
+
+	if len(entries) != numGoroutines {
+		t.Errorf("expected %d files, got %d", numGoroutines, len(entries))
 	}
 }
