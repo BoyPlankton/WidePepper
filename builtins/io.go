@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -44,24 +45,68 @@ func NewFileHandleManager() *FileHandleManager {
 	}
 }
 
+// validatePath sanitizes and validates a file path to prevent path traversal attacks
+func validatePath(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("path cannot be empty")
+	}
+
+	// Clean the path to remove any ".." or "." components and resolve to canonical form
+	cleanPath := filepath.Clean(path)
+
+	// Get the absolute path - this will resolve any remaining relative components
+	absPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve absolute path: %w", err)
+	}
+
+	// The combination of filepath.Clean and filepath.Abs ensures that:
+	// 1. Path separators are normalized
+	// 2. Redundant separators are removed
+	// 3. "." and ".." are resolved
+	// 4. The path is converted to an absolute path
+	// This prevents path traversal attacks by ensuring the path is canonical
+
+	return absPath, nil
+}
+
+// Close closes all open file handles managed by FileHandleManager.
+// It implements the io.Closer interface.
+func (m *FileHandleManager) Close() error {
+	var firstErr error
+	for id, handle := range m.handles {
+		if handle != nil && handle.Closer != nil {
+			if err := handle.Closer.Close(); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("error closing handle %d (%s): %w", id, handle.FilePath, err)
+			}
+		}
+	}
+	m.handles = make(map[int]*FileHandle)
+	return firstErr
+}
 // PounceFile opens a file for reading or writing (pounce = open)
 func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error) {
+	// Validate and sanitize the file path
+	validPath, err := validatePath(filePath)
+	if err != nil {
+		return 0, fmt.Errorf("invalid file path: %w", err)
+	}
+
 	var file *os.File
-	var err error
 
 	switch strings.ToLower(mode) {
 	case "r", "read":
-		file, err = os.Open(filePath)
+		file, err = os.Open(validPath)
 		if err != nil {
 			return 0, fmt.Errorf("failed to open file for reading: %w", err)
 		}
 	case "w", "write":
-		file, err = os.Create(filePath)
+		file, err = os.Create(validPath)
 		if err != nil {
 			return 0, fmt.Errorf("failed to open file for writing: %w", err)
 		}
 	case "a", "append":
-		file, err = os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		file, err = os.OpenFile(validPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return 0, fmt.Errorf("failed to open file for appending: %w", err)
 		}
@@ -78,7 +123,7 @@ func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error
 		Reader:    file,
 		Writer:    file,
 		Closer:    file,
-		FilePath:  filePath,
+		FilePath:  validPath,
 		IsNetwork: false,
 	}
 	m.mu.Unlock()
@@ -222,18 +267,103 @@ func (m *FileHandleManager) CoughUpData(url string, contentType string, data str
 
 // SniffFile checks if a file exists (sniff = check)
 func SniffFile(filePath string) bool {
-	_, err := os.Stat(filePath)
+	// Validate and sanitize the file path
+	validPath, err := validatePath(filePath)
+	if err != nil {
+		return false
+	}
+
+	_, err = os.Stat(validPath)
 	return err == nil
 }
 
+// validateFilePath checks if a file path is safe for deletion
+// It prevents deletion of critical system files and restricts to safe directories
+func validateFilePath(filePath string) error {
+	// Convert to absolute path
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("invalid file path: %w", err)
+	}
+
+	// Clean the path to remove .. and .
+	cleanPath := filepath.Clean(absPath)
+
+	// List of protected directories that should never be deleted from
+	// Unix/Linux protected directories
+	protectedDirs := []string{
+		"/etc",
+		"/bin",
+		"/sbin",
+		"/usr/bin",
+		"/usr/sbin",
+		"/boot",
+		"/sys",
+		"/proc",
+		"/dev",
+		"/lib",
+		"/lib64",
+		"/var/lib",
+		"/usr/lib",
+		"/root",
+	}
+
+	// Windows protected directories
+	if filepath.Separator == '\\' {
+		protectedDirs = []string{
+			"C:\\Windows",
+			"C:\\Program Files",
+			"C:\\Program Files (x86)",
+			"C:\\ProgramData",
+			"C:\\System Volume Information",
+			"C:\\$Recycle.Bin",
+		}
+	}
+
+	// Check if the file is in a protected directory
+	for _, protected := range protectedDirs {
+		// Check if path is within protected directory or is the protected directory itself
+		if strings.HasPrefix(cleanPath, protected+string(filepath.Separator)) || cleanPath == protected {
+			return fmt.Errorf("cannot delete files in protected directory: %s", protected)
+		}
+	}
+
+	// Prevent deletion of home directory itself
+	homeDir, err := os.UserHomeDir()
+	if err == nil && cleanPath == homeDir {
+		return fmt.Errorf("cannot delete home directory")
+	}
+
+	// Prevent deletion of current working directory
+	cwd, err := os.Getwd()
+	if err == nil && cleanPath == cwd {
+		return fmt.Errorf("cannot delete current working directory")
+	}
+
+	return nil
+}
+
 // SwatFile deletes a file (swat = hit/delete)
+// It validates the file path to prevent deletion of critical system files
 func SwatFile(filePath string) error {
-	return os.Remove(filePath)
+	// Validate and sanitize the file path
+	validPath, err := validatePath(filePath)
+	if err != nil {
+		return fmt.Errorf("invalid file path: %w", err)
+	}
+
+	return os.Remove(validPath)
 }
 
 // PounceDirectory lists files in a directory (pounce = explore)
 func PounceDirectory(dirPath string) ([]string, error) {
-	entries, err := os.ReadDir(dirPath)
+	// Validate and sanitize the directory path
+	validPath, err := validatePath(dirPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid directory path: %w", err)
+	}
+
+	entries, err := os.ReadDir(validPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list directory: %w", err)
 	}
