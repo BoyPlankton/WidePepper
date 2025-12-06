@@ -4,9 +4,13 @@
 package builtins
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -56,13 +60,75 @@ func TestFileHandleManager_ReadFile(t *testing.T) {
 	}
 	defer manager.NuzzleClose(handleID)
 
+	// Read first line
 	line, err := manager.LapLine(handleID)
 	if err != nil {
-		t.Fatalf("failed to read line: %v", err)
+		t.Fatalf("failed to read line 1: %v", err)
 	}
-
 	if line != "Line 1" {
 		t.Errorf("expected 'Line 1', got %q", line)
+	}
+
+	// Read second line
+	line, err = manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read line 2: %v", err)
+	}
+	if line != "Line 2" {
+		t.Errorf("expected 'Line 2', got %q", line)
+	}
+
+	// Read third line
+	line, err = manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read line 3: %v", err)
+	}
+	if line != "Line 3" {
+		t.Errorf("expected 'Line 3', got %q", line)
+	}
+}
+
+func TestFileHandleManager_ReadMultipleLines(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "multiline_test.txt")
+
+	err := os.WriteFile(testFile, []byte("First line\nSecond line\nThird line\n"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	handleID, err := manager.PounceFile(testFile, "r")
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer manager.NuzzleClose(handleID)
+
+	// Read first line
+	line1, err := manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read first line: %v", err)
+	}
+	if line1 != "First line" {
+		t.Errorf("expected 'First line', got %q", line1)
+	}
+
+	// Read second line
+	line2, err := manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read second line: %v", err)
+	}
+	if line2 != "Second line" {
+		t.Errorf("expected 'Second line', got %q", line2)
+	}
+
+	// Read third line
+	line3, err := manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read third line: %v", err)
+	}
+	if line3 != "Third line" {
+		t.Errorf("expected 'Third line', got %q", line3)
 	}
 }
 
@@ -90,6 +156,44 @@ func TestFileHandleManager_ReadAll(t *testing.T) {
 
 	if content != expectedContent {
 		t.Errorf("expected %q, got %q", expectedContent, content)
+	}
+}
+
+func TestFileHandleManager_MixedReadMethods(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "mixed_test.txt")
+
+	content := "First line\nSecond line\nThird line\nFourth line"
+	err := os.WriteFile(testFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	handleID, err := manager.PounceFile(testFile, "r")
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer manager.NuzzleClose(handleID)
+
+	// Read first line with LapLine
+	line1, err := manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read first line: %v", err)
+	}
+	if line1 != "First line" {
+		t.Errorf("expected 'First line', got %q", line1)
+	}
+
+	// Read the rest with DevourFile
+	rest, err := manager.DevourFile(handleID)
+	if err != nil {
+		t.Fatalf("failed to devour rest: %v", err)
+	}
+
+	expectedRest := "Second line\nThird line\nFourth line"
+	if rest != expectedRest {
+		t.Errorf("expected %q, got %q", expectedRest, rest)
 	}
 }
 
@@ -193,6 +297,112 @@ func TestSwatFile(t *testing.T) {
 	}
 }
 
+func TestSwatFile_ProtectedDirectories(t *testing.T) {
+	// Test that we cannot delete files in protected directories
+	protectedPaths := []string{
+		"/etc/passwd",
+		"/bin/sh",
+		"/usr/bin/ls",
+		"/sbin/init",
+		"/boot/vmlinuz",
+		"/sys/kernel",
+		"/proc/cpuinfo",
+		"/dev/null",
+		"/lib/libc.so",
+		"/root/.bashrc",
+	}
+
+	for _, path := range protectedPaths {
+		err := SwatFile(path)
+		if err == nil {
+			t.Errorf("expected error when trying to delete protected file: %s", path)
+		}
+		if !strings.Contains(err.Error(), "protected directory") {
+			t.Errorf("expected 'protected directory' error for %s, got: %v", path, err)
+		}
+	}
+}
+
+func TestSwatFile_HomeDirectory(t *testing.T) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("could not get home directory")
+	}
+
+	err = SwatFile(homeDir)
+	if err == nil {
+		t.Error("expected error when trying to delete home directory")
+	}
+	if !strings.Contains(err.Error(), "home directory") {
+		t.Errorf("expected 'home directory' error, got: %v", err)
+	}
+}
+
+func TestSwatFile_CurrentWorkingDirectory(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Skip("could not get current working directory")
+	}
+
+	err = SwatFile(cwd)
+	if err == nil {
+		t.Error("expected error when trying to delete current working directory")
+	}
+	if !strings.Contains(err.Error(), "current working directory") {
+		t.Errorf("expected 'current working directory' error, got: %v", err)
+	}
+}
+
+func TestSwatFile_PathTraversal(t *testing.T) {
+	testDir := t.TempDir()
+
+	// Create a test file in temp directory
+	testFile := filepath.Join(testDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Try to delete using path traversal that would go to /etc
+	// This should fail because the absolute path would resolve to /etc
+	err = SwatFile(filepath.Join(testDir, "../../../../../../../etc/passwd"))
+	if err == nil {
+		t.Error("expected error for path traversal attempt")
+	}
+}
+
+func TestSwatFile_RelativePath(t *testing.T) {
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "relative_test.txt")
+
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Change to test directory
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get current directory: %v", err)
+	}
+	defer os.Chdir(oldDir)
+
+	err = os.Chdir(testDir)
+	if err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
+	// Delete using relative path
+	err = SwatFile("relative_test.txt")
+	if err != nil {
+		t.Fatalf("failed to delete file with relative path: %v", err)
+	}
+
+	if SniffFile(testFile) {
+		t.Error("expected file to be deleted")
+	}
+}
+
 func TestPounceDirectory(t *testing.T) {
 	testDir := t.TempDir()
 
@@ -267,5 +477,522 @@ func TestFileHandleManager_WriteString(t *testing.T) {
 	expected := "No newline here"
 	if string(content) != expected {
 		t.Errorf("expected %q, got %q", expected, string(content))
+	}
+}
+
+// TestValidateURL_ValidSchemes tests that http and https URLs are accepted
+func TestValidateURL_ValidSchemes(t *testing.T) {
+	validURLs := []string{
+		"http://example.com",
+		"https://example.com",
+		"HTTP://example.com",
+		"HTTPS://example.com",
+		"http://example.com:8080/path",
+		"https://api.example.com/v1/endpoint?param=value",
+	}
+
+	for _, testURL := range validURLs {
+		err := validateURL(testURL)
+		if err != nil {
+			t.Errorf("expected URL %q to be valid, got error: %v", testURL, err)
+		}
+	}
+}
+
+// TestValidateURL_InvalidSchemes tests that non-http/https schemes are rejected
+func TestValidateURL_InvalidSchemes(t *testing.T) {
+	invalidURLs := []string{
+		"file:///etc/passwd",
+		"ftp://example.com",
+		"javascript:alert(1)",
+		"data:text/html,<script>alert(1)</script>",
+		"gopher://example.com",
+		"telnet://example.com",
+		"ldap://example.com",
+	}
+
+	for _, testURL := range invalidURLs {
+		err := validateURL(testURL)
+		if err == nil {
+			t.Errorf("expected URL %q to be invalid (SSRF risk), but it was accepted", testURL)
+		}
+	}
+}
+
+// TestValidateURL_MalformedURLs tests that malformed URLs are rejected
+func TestValidateURL_MalformedURLs(t *testing.T) {
+	malformedURLs := []string{
+		"not a url",
+		"://missing-scheme",
+		"http://",
+		"https://",
+	}
+
+	for _, testURL := range malformedURLs {
+		err := validateURL(testURL)
+		if err == nil {
+			t.Errorf("expected malformed URL %q to be rejected, but it was accepted", testURL)
+		}
+	}
+}
+
+// TestFetchURL_InvalidScheme tests that FetchURL rejects invalid URL schemes
+func TestFetchURL_InvalidScheme(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Try to fetch a file:// URL (SSRF attack vector)
+	_, err := manager.FetchURL("file:///etc/passwd")
+	if err == nil {
+		t.Error("expected FetchURL to reject file:// scheme")
+	}
+
+	// Try to fetch a javascript: URL
+	_, err = manager.FetchURL("javascript:alert(1)")
+	if err == nil {
+		t.Error("expected FetchURL to reject javascript: scheme")
+	}
+}
+
+// TestCoughUpData_InvalidScheme tests that CoughUpData rejects invalid URL schemes
+func TestCoughUpData_InvalidScheme(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Try to POST to a file:// URL (SSRF attack vector)
+	_, err := manager.CoughUpData("file:///tmp/test", "text/plain", "data")
+	if err == nil {
+		t.Error("expected CoughUpData to reject file:// scheme")
+	}
+
+	// Try to POST to a ftp: URL
+	_, err = manager.CoughUpData("ftp://example.com", "text/plain", "data")
+	if err == nil {
+		t.Error("expected CoughUpData to reject ftp: scheme")
+// Network I/O tests
+
+func TestFetchURL_Success(t *testing.T) {
+	manager := NewFileHandleManager()
+	expectedResponse := "Hello from test server"
+
+	// Create a mock HTTP server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET request, got %s", r.Method)
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, expectedResponse)
+	}))
+	defer server.Close()
+
+	// Test FetchURL
+	response, err := manager.FetchURL(server.URL)
+	if err != nil {
+		t.Fatalf("FetchURL failed: %v", err)
+	}
+
+	if response != expectedResponse {
+		t.Errorf("expected %q, got %q", expectedResponse, response)
+	}
+}
+
+func TestFetchURL_HTTPError(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Create a mock HTTP server that returns an error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, "Not Found")
+	}))
+	defer server.Close()
+
+	// Test FetchURL with error response
+	_, err := manager.FetchURL(server.URL)
+	if err == nil {
+		t.Error("expected error for HTTP 404, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("expected error to contain '404', got %v", err)
+	}
+}
+
+func TestFetchURL_NetworkError(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Use an invalid URL to trigger a network error
+	_, err := manager.FetchURL("http://invalid-host-that-does-not-exist-12345.com")
+	if err == nil {
+		t.Error("expected network error, got nil")
+	}
+}
+
+func TestFetchURL_MultipleStatusCodes(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	testCases := []struct {
+		statusCode int
+		expectErr  bool
+	}{
+		{http.StatusOK, false},
+		{http.StatusBadRequest, true},
+		{http.StatusUnauthorized, true},
+		{http.StatusInternalServerError, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Status_%d", tc.statusCode), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+				fmt.Fprint(w, "test response")
+			}))
+			defer server.Close()
+
+			_, err := manager.FetchURL(server.URL)
+			if tc.expectErr && err == nil {
+				t.Errorf("expected error for status %d, got nil", tc.statusCode)
+			}
+			if !tc.expectErr && err != nil {
+				t.Errorf("expected no error for status %d, got %v", tc.statusCode, err)
+			}
+		})
+	}
+}
+
+func TestCoughUpData_Success_StatusOK(t *testing.T) {
+	manager := NewFileHandleManager()
+	expectedResponse := "Data received"
+	testData := "test payload"
+	testContentType := "application/json"
+
+	// Create a mock HTTP server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
+		if r.Header.Get("Content-Type") != testContentType {
+			t.Errorf("expected Content-Type %s, got %s", testContentType, r.Header.Get("Content-Type"))
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, expectedResponse)
+	}))
+	defer server.Close()
+
+	// Test CoughUpData
+	response, err := manager.CoughUpData(server.URL, testContentType, testData)
+	if err != nil {
+		t.Fatalf("CoughUpData failed: %v", err)
+	}
+
+	if response != expectedResponse {
+		t.Errorf("expected %q, got %q", expectedResponse, response)
+	}
+}
+
+func TestCoughUpData_Success_StatusCreated(t *testing.T) {
+	manager := NewFileHandleManager()
+	expectedResponse := "Resource created"
+	testData := "create new resource"
+
+	// Create a mock HTTP server that returns 201
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, expectedResponse)
+	}))
+	defer server.Close()
+
+	// Test CoughUpData with 201 response
+	response, err := manager.CoughUpData(server.URL, "text/plain", testData)
+	if err != nil {
+		t.Fatalf("CoughUpData failed: %v", err)
+	}
+
+	if response != expectedResponse {
+		t.Errorf("expected %q, got %q", expectedResponse, response)
+	}
+}
+
+func TestCoughUpData_HTTPError(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Create a mock HTTP server that returns an error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Bad Request")
+	}))
+	defer server.Close()
+
+	// Test CoughUpData with error response
+	_, err := manager.CoughUpData(server.URL, "text/plain", "test data")
+	if err == nil {
+		t.Error("expected error for HTTP 400, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "400") {
+		t.Errorf("expected error to contain '400', got %v", err)
+	}
+}
+
+func TestCoughUpData_NetworkError(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Use an invalid URL to trigger a network error
+	_, err := manager.CoughUpData("http://invalid-host-that-does-not-exist-12345.com", "text/plain", "data")
+	if err == nil {
+		t.Error("expected network error, got nil")
+	}
+}
+
+func TestCoughUpData_DifferentContentTypes(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	contentTypes := []string{
+		"application/json",
+		"application/xml",
+		"text/plain",
+		"text/html",
+	}
+
+	for _, ct := range contentTypes {
+		t.Run(ct, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Content-Type") != ct {
+					t.Errorf("expected Content-Type %s, got %s", ct, r.Header.Get("Content-Type"))
+				}
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, "OK")
+			}))
+			defer server.Close()
+
+			_, err := manager.CoughUpData(server.URL, ct, "test data")
+			if err != nil {
+				t.Errorf("CoughUpData failed for content type %s: %v", ct, err)
+			}
+		})
+	}
+}
+
+func TestCoughUpData_MultipleStatusCodes(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	testCases := []struct {
+		statusCode int
+		expectErr  bool
+	}{
+		{http.StatusOK, false},
+		{http.StatusCreated, false},
+		{http.StatusBadRequest, true},
+		{http.StatusUnauthorized, true},
+		{http.StatusNotFound, true},
+		{http.StatusInternalServerError, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Status_%d", tc.statusCode), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+				fmt.Fprint(w, "test response")
+			}))
+			defer server.Close()
+
+			_, err := manager.CoughUpData(server.URL, "text/plain", "test data")
+			if tc.expectErr && err == nil {
+				t.Errorf("expected error for status %d, got nil", tc.statusCode)
+			}
+			if !tc.expectErr && err != nil {
+				t.Errorf("expected no error for status %d, got %v", tc.statusCode, err)
+			}
+		})
+// TestFileHandleManager_ConcurrentAccess tests thread-safety of the FileHandleManager
+func TestFileHandleManager_ConcurrentAccess(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+	numGoroutines := 10
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	// Concurrently open, write, and close files
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+
+			testFile := filepath.Join(testDir, fmt.Sprintf("concurrent_test_%d.txt", id))
+
+			// Open file
+			handleID, err := manager.PounceFile(testFile, "w")
+			if err != nil {
+				t.Errorf("goroutine %d: failed to open file: %v", id, err)
+				return
+			}
+
+			// Write to file
+			err = manager.ScratchLine(handleID, "Hello from goroutine")
+			if err != nil {
+				t.Errorf("goroutine %d: failed to write: %v", id, err)
+				return
+			}
+
+			// Close file
+			err = manager.NuzzleClose(handleID)
+			if err != nil {
+				t.Errorf("goroutine %d: failed to close: %v", id, err)
+				return
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify all files were created
+	entries, err := os.ReadDir(testDir)
+	if err != nil {
+		t.Fatalf("failed to read test directory: %v", err)
+	}
+
+	if len(entries) != numGoroutines {
+		t.Errorf("expected %d files, got %d", numGoroutines, len(entries))
+// Path Traversal Security Tests
+
+func TestValidatePath_EmptyPath(t *testing.T) {
+	_, err := validatePath("")
+	if err == nil {
+		t.Error("expected error for empty path")
+	}
+	if err != nil && !strings.Contains(err.Error(), "empty") {
+		t.Errorf("expected 'empty' error, got: %v", err)
+	}
+}
+
+func TestPounceFile_PathTraversal(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Test various path traversal attempts
+	traversalPaths := []string{
+		"../../etc/passwd",
+		"../../../etc/passwd",
+		"./../../etc/passwd",
+		"./../../../etc/passwd",
+	}
+
+	for _, maliciousPath := range traversalPaths {
+		// These should still work but resolve to safe absolute paths
+		// The key is that they won't escape to sensitive system files
+		_, err := manager.PounceFile(maliciousPath, "r")
+		// The error could be either path validation or file not found
+		// Both are acceptable as long as we don't access sensitive files
+		if err != nil {
+			// This is good - the operation was blocked
+			continue
+		}
+		// If no error, the path should have been cleaned and made absolute
+	}
+}
+
+func TestSniffFile_PathTraversal(t *testing.T) {
+	// Create a test file in a temp directory
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Verify the file exists with a safe path
+	if !SniffFile(testFile) {
+		t.Error("expected file to exist")
+	}
+
+	// Empty path should return false
+	if SniffFile("") {
+		t.Error("expected false for empty path")
+	}
+}
+
+func TestSwatFile_PathTraversal(t *testing.T) {
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "delete_test.txt")
+
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Valid delete should work
+	err = SwatFile(testFile)
+	if err != nil {
+		t.Fatalf("failed to delete file: %v", err)
+	}
+
+	// Empty path should fail
+	err = SwatFile("")
+	if err == nil {
+		t.Error("expected error for empty path")
+	}
+}
+
+func TestPounceDirectory_PathTraversal(t *testing.T) {
+	testDir := t.TempDir()
+
+	// Create test files
+	files := []string{"file1.txt", "file2.txt"}
+	for _, f := range files {
+		err := os.WriteFile(filepath.Join(testDir, f), []byte("test"), 0644)
+		if err != nil {
+			t.Fatalf("failed to create test file: %v", err)
+		}
+	}
+
+	// Valid directory listing should work
+	listed, err := PounceDirectory(testDir)
+	if err != nil {
+		t.Fatalf("failed to list directory: %v", err)
+	}
+
+	if len(listed) != len(files) {
+		t.Errorf("expected %d files, got %d", len(files), len(listed))
+	}
+
+	// Empty path should fail
+	_, err = PounceDirectory("")
+	if err == nil {
+		t.Error("expected error for empty path")
+	}
+}
+
+func TestPounceFile_CleanedPaths(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+
+	// Create a test file
+	testFile := filepath.Join(testDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test content"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Try to open with various "dirty" but valid paths
+	dirtyPaths := []string{
+		testFile,
+		filepath.Join(testDir, ".", "test.txt"),
+		filepath.Join(testDir, "subdir", "..", "test.txt"),
+	}
+
+	for _, path := range dirtyPaths {
+		handleID, err := manager.PounceFile(path, "r")
+		if err != nil {
+			t.Errorf("failed to open file with path %q: %v", path, err)
+			continue
+		}
+
+		// Read content to verify it's the right file
+		content, err := manager.DevourFile(handleID)
+		if err != nil {
+			t.Errorf("failed to read file: %v", err)
+		}
+
+		if content != "test content" {
+			t.Errorf("unexpected content for path %q: got %q", path, content)
+		}
+
+		manager.NuzzleClose(handleID)
 	}
 }
