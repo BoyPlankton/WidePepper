@@ -2,6 +2,8 @@
 
 WidePepper is a dynamically typed, embeddable scripting language with a cat-themed syntax. Its design philosophy centers around simplicity, readability, and ensuring users are always entertained by its feline reserved words.
 
+![WidePepper "Spread It"](https://i.imgur.com/1F8rPrX.jpeg)
+
 ## **Table of Contents**
 
 1. [Quick Start](#quick-start)
