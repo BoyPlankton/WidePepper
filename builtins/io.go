@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -52,6 +53,7 @@ func (m *FileHandleManager) Close() error {
 	m.handles = make(map[int]*FileHandle)
 	return firstErr
 }
+
 // PounceFile opens a file for reading or writing (pounce = open)
 func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error) {
 	var file *os.File
@@ -172,9 +174,29 @@ func (m *FileHandleManager) NuzzleClose(handleID int) error {
 	return nil
 }
 
+// validateURL validates the URL scheme to prevent SSRF attacks
+// Only http and https schemes are allowed
+func validateURL(rawURL string) error {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	scheme := strings.ToLower(parsedURL.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("invalid URL scheme '%s': only http and https are allowed", parsedURL.Scheme)
+	}
+
+	return nil
+}
+
 // FetchURL performs a GET request to a URL (fetch = get)
-func (m *FileHandleManager) FetchURL(url string) (string, error) {
-	resp, err := http.Get(url)
+func (m *FileHandleManager) FetchURL(urlStr string) (string, error) {
+	if err := validateURL(urlStr); err != nil {
+		return "", err
+	}
+
+	resp, err := http.Get(urlStr)
 	if err != nil {
 		return "", fmt.Errorf("HTTP GET failed: %w", err)
 	}
@@ -193,8 +215,12 @@ func (m *FileHandleManager) FetchURL(url string) (string, error) {
 }
 
 // CoughUpData performs a POST request to a URL (cough up = send data)
-func (m *FileHandleManager) CoughUpData(url string, contentType string, data string) (string, error) {
-	resp, err := http.Post(url, contentType, strings.NewReader(data))
+func (m *FileHandleManager) CoughUpData(urlStr string, contentType string, data string) (string, error) {
+	if err := validateURL(urlStr); err != nil {
+		return "", err
+	}
+
+	resp, err := http.Post(urlStr, contentType, strings.NewReader(data))
 	if err != nil {
 		return "", fmt.Errorf("HTTP POST failed: %w", err)
 	}
