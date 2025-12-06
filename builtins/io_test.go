@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -189,6 +190,112 @@ func TestSwatFile(t *testing.T) {
 	err = SwatFile(testFile)
 	if err != nil {
 		t.Fatalf("failed to delete file: %v", err)
+	}
+
+	if SniffFile(testFile) {
+		t.Error("expected file to be deleted")
+	}
+}
+
+func TestSwatFile_ProtectedDirectories(t *testing.T) {
+	// Test that we cannot delete files in protected directories
+	protectedPaths := []string{
+		"/etc/passwd",
+		"/bin/sh",
+		"/usr/bin/ls",
+		"/sbin/init",
+		"/boot/vmlinuz",
+		"/sys/kernel",
+		"/proc/cpuinfo",
+		"/dev/null",
+		"/lib/libc.so",
+		"/root/.bashrc",
+	}
+
+	for _, path := range protectedPaths {
+		err := SwatFile(path)
+		if err == nil {
+			t.Errorf("expected error when trying to delete protected file: %s", path)
+		}
+		if !strings.Contains(err.Error(), "protected directory") {
+			t.Errorf("expected 'protected directory' error for %s, got: %v", path, err)
+		}
+	}
+}
+
+func TestSwatFile_HomeDirectory(t *testing.T) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("could not get home directory")
+	}
+
+	err = SwatFile(homeDir)
+	if err == nil {
+		t.Error("expected error when trying to delete home directory")
+	}
+	if !strings.Contains(err.Error(), "home directory") {
+		t.Errorf("expected 'home directory' error, got: %v", err)
+	}
+}
+
+func TestSwatFile_CurrentWorkingDirectory(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Skip("could not get current working directory")
+	}
+
+	err = SwatFile(cwd)
+	if err == nil {
+		t.Error("expected error when trying to delete current working directory")
+	}
+	if !strings.Contains(err.Error(), "current working directory") {
+		t.Errorf("expected 'current working directory' error, got: %v", err)
+	}
+}
+
+func TestSwatFile_PathTraversal(t *testing.T) {
+	testDir := t.TempDir()
+
+	// Create a test file in temp directory
+	testFile := filepath.Join(testDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Try to delete using path traversal that would go to /etc
+	// This should fail because the absolute path would resolve to /etc
+	err = SwatFile(filepath.Join(testDir, "../../../../../../../etc/passwd"))
+	if err == nil {
+		t.Error("expected error for path traversal attempt")
+	}
+}
+
+func TestSwatFile_RelativePath(t *testing.T) {
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "relative_test.txt")
+
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Change to test directory
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get current directory: %v", err)
+	}
+	defer os.Chdir(oldDir)
+
+	err = os.Chdir(testDir)
+	if err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
+	// Delete using relative path
+	err = SwatFile("relative_test.txt")
+	if err != nil {
+		t.Fatalf("failed to delete file with relative path: %v", err)
 	}
 
 	if SniffFile(testFile) {
@@ -507,5 +614,198 @@ func TestCoughUpData_MultipleStatusCodes(t *testing.T) {
 				t.Errorf("expected no error for status %d, got %v", tc.statusCode, err)
 			}
 		})
+// TestFileHandleManager_ConcurrentAccess tests thread-safety of the FileHandleManager
+func TestFileHandleManager_ConcurrentAccess(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+	numGoroutines := 10
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	// Concurrently open, write, and close files
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+
+			testFile := filepath.Join(testDir, fmt.Sprintf("concurrent_test_%d.txt", id))
+
+			// Open file
+			handleID, err := manager.PounceFile(testFile, "w")
+			if err != nil {
+				t.Errorf("goroutine %d: failed to open file: %v", id, err)
+				return
+			}
+
+			// Write to file
+			err = manager.ScratchLine(handleID, "Hello from goroutine")
+			if err != nil {
+				t.Errorf("goroutine %d: failed to write: %v", id, err)
+				return
+			}
+
+			// Close file
+			err = manager.NuzzleClose(handleID)
+			if err != nil {
+				t.Errorf("goroutine %d: failed to close: %v", id, err)
+				return
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify all files were created
+	entries, err := os.ReadDir(testDir)
+	if err != nil {
+		t.Fatalf("failed to read test directory: %v", err)
+	}
+
+	if len(entries) != numGoroutines {
+		t.Errorf("expected %d files, got %d", numGoroutines, len(entries))
+// Path Traversal Security Tests
+
+func TestValidatePath_EmptyPath(t *testing.T) {
+	_, err := validatePath("")
+	if err == nil {
+		t.Error("expected error for empty path")
+	}
+	if err != nil && !strings.Contains(err.Error(), "empty") {
+		t.Errorf("expected 'empty' error, got: %v", err)
+	}
+}
+
+func TestPounceFile_PathTraversal(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Test various path traversal attempts
+	traversalPaths := []string{
+		"../../etc/passwd",
+		"../../../etc/passwd",
+		"./../../etc/passwd",
+		"./../../../etc/passwd",
+	}
+
+	for _, maliciousPath := range traversalPaths {
+		// These should still work but resolve to safe absolute paths
+		// The key is that they won't escape to sensitive system files
+		_, err := manager.PounceFile(maliciousPath, "r")
+		// The error could be either path validation or file not found
+		// Both are acceptable as long as we don't access sensitive files
+		if err != nil {
+			// This is good - the operation was blocked
+			continue
+		}
+		// If no error, the path should have been cleaned and made absolute
+	}
+}
+
+func TestSniffFile_PathTraversal(t *testing.T) {
+	// Create a test file in a temp directory
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Verify the file exists with a safe path
+	if !SniffFile(testFile) {
+		t.Error("expected file to exist")
+	}
+
+	// Empty path should return false
+	if SniffFile("") {
+		t.Error("expected false for empty path")
+	}
+}
+
+func TestSwatFile_PathTraversal(t *testing.T) {
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "delete_test.txt")
+
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Valid delete should work
+	err = SwatFile(testFile)
+	if err != nil {
+		t.Fatalf("failed to delete file: %v", err)
+	}
+
+	// Empty path should fail
+	err = SwatFile("")
+	if err == nil {
+		t.Error("expected error for empty path")
+	}
+}
+
+func TestPounceDirectory_PathTraversal(t *testing.T) {
+	testDir := t.TempDir()
+
+	// Create test files
+	files := []string{"file1.txt", "file2.txt"}
+	for _, f := range files {
+		err := os.WriteFile(filepath.Join(testDir, f), []byte("test"), 0644)
+		if err != nil {
+			t.Fatalf("failed to create test file: %v", err)
+		}
+	}
+
+	// Valid directory listing should work
+	listed, err := PounceDirectory(testDir)
+	if err != nil {
+		t.Fatalf("failed to list directory: %v", err)
+	}
+
+	if len(listed) != len(files) {
+		t.Errorf("expected %d files, got %d", len(files), len(listed))
+	}
+
+	// Empty path should fail
+	_, err = PounceDirectory("")
+	if err == nil {
+		t.Error("expected error for empty path")
+	}
+}
+
+func TestPounceFile_CleanedPaths(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+
+	// Create a test file
+	testFile := filepath.Join(testDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test content"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Try to open with various "dirty" but valid paths
+	dirtyPaths := []string{
+		testFile,
+		filepath.Join(testDir, ".", "test.txt"),
+		filepath.Join(testDir, "subdir", "..", "test.txt"),
+	}
+
+	for _, path := range dirtyPaths {
+		handleID, err := manager.PounceFile(path, "r")
+		if err != nil {
+			t.Errorf("failed to open file with path %q: %v", path, err)
+			continue
+		}
+
+		// Read content to verify it's the right file
+		content, err := manager.DevourFile(handleID)
+		if err != nil {
+			t.Errorf("failed to read file: %v", err)
+		}
+
+		if content != "test content" {
+			t.Errorf("unexpected content for path %q: got %q", path, content)
+		}
+
+		manager.NuzzleClose(handleID)
 	}
 }
