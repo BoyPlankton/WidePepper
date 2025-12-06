@@ -137,6 +137,44 @@ func TestFileHandleManager_ReadAll(t *testing.T) {
 	}
 }
 
+func TestFileHandleManager_MixedReadMethods(t *testing.T) {
+	manager := NewFileHandleManager()
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "mixed_test.txt")
+
+	content := "First line\nSecond line\nThird line\nFourth line"
+	err := os.WriteFile(testFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	handleID, err := manager.PounceFile(testFile, "r")
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer manager.NuzzleClose(handleID)
+
+	// Read first line with LapLine
+	line1, err := manager.LapLine(handleID)
+	if err != nil {
+		t.Fatalf("failed to read first line: %v", err)
+	}
+	if line1 != "First line" {
+		t.Errorf("expected 'First line', got %q", line1)
+	}
+
+	// Read the rest with DevourFile
+	rest, err := manager.DevourFile(handleID)
+	if err != nil {
+		t.Fatalf("failed to devour rest: %v", err)
+	}
+
+	expectedRest := "Second line\nThird line\nFourth line"
+	if rest != expectedRest {
+		t.Errorf("expected %q, got %q", expectedRest, rest)
+	}
+}
+
 func TestFileHandleManager_AppendMode(t *testing.T) {
 	manager := NewFileHandleManager()
 	testDir := t.TempDir()

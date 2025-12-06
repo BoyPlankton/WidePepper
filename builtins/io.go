@@ -121,7 +121,15 @@ func (m *FileHandleManager) DevourFile(handleID int) (string, error) {
 		return "", fmt.Errorf("invalid file handle: %d", handleID)
 	}
 
-	bytes, err := io.ReadAll(handle.Reader)
+	// If a buffered reader exists (from LapLine calls), use it to preserve buffered data
+	var reader io.Reader
+	if handle.BufReader != nil {
+		reader = handle.BufReader
+	} else {
+		reader = handle.Reader
+	}
+
+	bytes, err := io.ReadAll(reader)
 	if err != nil {
 		return "", fmt.Errorf("error reading file: %w", err)
 	}
