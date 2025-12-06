@@ -280,6 +280,8 @@ func TestValidateURL(t *testing.T) {
 		{"valid https", "https://example.com", false},
 		{"valid http with path", "http://example.com/path", false},
 		{"valid https with path", "https://example.com/path", false},
+		{"valid HTTP uppercase", "HTTP://example.com", false},
+		{"valid HTTPS uppercase", "HTTPS://example.com", false},
 		{"invalid file scheme", "file:///etc/passwd", true},
 		{"invalid ftp scheme", "ftp://example.com", true},
 		{"invalid gopher scheme", "gopher://example.com", true},
@@ -289,37 +291,14 @@ func TestValidateURL(t *testing.T) {
 		{"malformed url", "://invalid", true},
 	}
 
-	manager := NewFileHandleManager()
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test with FetchURL
-			_, err := manager.FetchURL(tt.url)
+			err := validateURL(tt.url)
 			if tt.expectErr && err == nil {
-				t.Errorf("FetchURL: expected error for %s, got nil", tt.url)
+				t.Errorf("expected error for %s, got nil", tt.url)
 			}
-			if !tt.expectErr && err != nil && !strings.Contains(err.Error(), "HTTP") && !strings.Contains(err.Error(), "dial") {
-				// Only fail if it's not a network error (we don't expect these URLs to work)
-				// We just want to make sure the validation happens before the request
-				if strings.Contains(err.Error(), "invalid URL") || strings.Contains(err.Error(), "only http and https") {
-					// This is the validation error, which is expected for invalid schemes
-				} else {
-					t.Errorf("FetchURL: unexpected error for %s: %v", tt.url, err)
-				}
-			}
-
-			// Test with CoughUpData
-			_, err = manager.CoughUpData(tt.url, "text/plain", "test")
-			if tt.expectErr && err == nil {
-				t.Errorf("CoughUpData: expected error for %s, got nil", tt.url)
-			}
-			if !tt.expectErr && err != nil && !strings.Contains(err.Error(), "HTTP") && !strings.Contains(err.Error(), "dial") {
-				// Only fail if it's not a network error
-				if strings.Contains(err.Error(), "invalid URL") || strings.Contains(err.Error(), "only http and https") {
-					// This is the validation error, which is expected for invalid schemes
-				} else {
-					t.Errorf("CoughUpData: unexpected error for %s: %v", tt.url, err)
-				}
+			if !tt.expectErr && err != nil {
+				t.Errorf("unexpected error for %s: %v", tt.url, err)
 			}
 		})
 	}

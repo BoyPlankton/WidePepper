@@ -184,7 +184,7 @@ func validateURL(rawURL string) error {
 
 	scheme := strings.ToLower(parsedURL.Scheme)
 	if scheme != "http" && scheme != "https" {
-		return fmt.Errorf("invalid URL scheme '%s': only http and https are allowed", parsedURL.Scheme)
+		return fmt.Errorf("invalid URL scheme '%s': only http and https are allowed", scheme)
 	}
 
 	return nil
