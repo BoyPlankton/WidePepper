@@ -269,3 +269,93 @@ func TestFileHandleManager_WriteString(t *testing.T) {
 		t.Errorf("expected %q, got %q", expected, string(content))
 	}
 }
+
+// TestValidateURL_ValidSchemes tests that http and https URLs are accepted
+func TestValidateURL_ValidSchemes(t *testing.T) {
+	validURLs := []string{
+		"http://example.com",
+		"https://example.com",
+		"HTTP://example.com",
+		"HTTPS://example.com",
+		"http://example.com:8080/path",
+		"https://api.example.com/v1/endpoint?param=value",
+	}
+
+	for _, testURL := range validURLs {
+		err := validateURL(testURL)
+		if err != nil {
+			t.Errorf("expected URL %q to be valid, got error: %v", testURL, err)
+		}
+	}
+}
+
+// TestValidateURL_InvalidSchemes tests that non-http/https schemes are rejected
+func TestValidateURL_InvalidSchemes(t *testing.T) {
+	invalidURLs := []string{
+		"file:///etc/passwd",
+		"ftp://example.com",
+		"javascript:alert(1)",
+		"data:text/html,<script>alert(1)</script>",
+		"gopher://example.com",
+		"telnet://example.com",
+		"ldap://example.com",
+	}
+
+	for _, testURL := range invalidURLs {
+		err := validateURL(testURL)
+		if err == nil {
+			t.Errorf("expected URL %q to be invalid (SSRF risk), but it was accepted", testURL)
+		}
+	}
+}
+
+// TestValidateURL_MalformedURLs tests that malformed URLs are rejected
+func TestValidateURL_MalformedURLs(t *testing.T) {
+	malformedURLs := []string{
+		"not a url",
+		"://missing-scheme",
+		"http://",
+		"https://",
+	}
+
+	for _, testURL := range malformedURLs {
+		err := validateURL(testURL)
+		if err == nil {
+			t.Errorf("expected malformed URL %q to be rejected, but it was accepted", testURL)
+		}
+	}
+}
+
+// TestFetchURL_InvalidScheme tests that FetchURL rejects invalid URL schemes
+func TestFetchURL_InvalidScheme(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Try to fetch a file:// URL (SSRF attack vector)
+	_, err := manager.FetchURL("file:///etc/passwd")
+	if err == nil {
+		t.Error("expected FetchURL to reject file:// scheme")
+	}
+
+	// Try to fetch a javascript: URL
+	_, err = manager.FetchURL("javascript:alert(1)")
+	if err == nil {
+		t.Error("expected FetchURL to reject javascript: scheme")
+	}
+}
+
+// TestCoughUpData_InvalidScheme tests that CoughUpData rejects invalid URL schemes
+func TestCoughUpData_InvalidScheme(t *testing.T) {
+	manager := NewFileHandleManager()
+
+	// Try to POST to a file:// URL (SSRF attack vector)
+	_, err := manager.CoughUpData("file:///tmp/test", "text/plain", "data")
+	if err == nil {
+		t.Error("expected CoughUpData to reject file:// scheme")
+	}
+
+	// Try to POST to a ftp: URL
+	_, err = manager.CoughUpData("ftp://example.com", "text/plain", "data")
+	if err == nil {
+		t.Error("expected CoughUpData to reject ftp: scheme")
+	}
+}
