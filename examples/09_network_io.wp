@@ -1,0 +1,22 @@
+// WidePepper - Network I/O Example
+// Demonstrates network operations concepts
+// Note: Full network functionality requires an interpreter/evaluator
+
+// Network I/O operations are available through the builtins package:
+// - fetchURL(url)                       - HTTP GET request
+// - coughUpData(url, contentType, data) - HTTP POST request
+
+// File checking operations:
+// - sniffFile(path)  - Check if file exists
+
+// Example structure (parser support only):
+yarn api_endpoint = "https://api.example.com/data";
+meow api_endpoint;
+
+meow "Network functions are built-in but require interpreter implementation";
+
+// Conditional example with network check:
+yarn network_enabled = catnip;
+pounce (network_enabled) {
+  meow "Network I/O is ready to use";
+}

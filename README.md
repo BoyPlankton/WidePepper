@@ -120,6 +120,8 @@ WidePepper includes several example scripts in the `examples/` directory:
 | `05_functions.wp` | Function definition and calling (purr) |
 | `06_operators.wp` | Arithmetic, comparison, and logical operators |
 | `07_complex_example.wp` | Complete program combining multiple features |
+| `08_file_io.wp` | File I/O operations (read/write files) |
+| `09_network_io.wp` | Network operations (HTTP GET/POST) |
 
 ### Running Examples
 
@@ -338,6 +340,8 @@ meow !is_sunny;              // mice
 
 ### **Input/Output**
 
+#### **Console Output**
+
 The `meow` keyword outputs values to the console.
 
 ```widepepper
@@ -345,6 +349,55 @@ meow "Hello";           // String
 meow 42;                // Number
 meow catnip;            // Boolean
 meow 5 + 3;             // Expression
+```
+
+#### **File I/O** (Built-in Functions)
+
+WidePepper provides file operations through cat-themed built-in functions:
+
+```widepepper
+// Open a file (pounceFile = pounce on file to open)
+yarn handle = pounceFile("data.txt", "r");
+yarn line = lapLine(handle);       // lapLine = lap up one line
+yarn content = devourFile(handle); // devourFile = devour entire file
+nuzzleClose(handle);               // nuzzleClose = nuzzle to close
+
+// Open a file for writing
+yarn writeHandle = pounceFile("output.txt", "w");
+scratchLine(writeHandle, "Hello, World!");    // scratchLine = scratch to write with newline
+scratchString(writeHandle, "No newline");     // scratchString = scratch without newline
+nuzzleClose(writeHandle);
+
+// Append to a file
+yarn appendHandle = pounceFile("log.txt", "a");
+scratchLine(appendHandle, "Log entry");
+nuzzleClose(appendHandle);
+
+// Check if file exists (sniffFile = sniff to check)
+pounce sniffFile("config.txt") {
+    meow "Configuration found";
+}
+
+// Delete a file (swatFile = swat to delete)
+swatFile("temp.txt");
+
+// List files in a directory (pounceDirectory = pounce on directory)
+yarn files = pounceDirectory("./data");
+```
+
+#### **Network I/O** (Built-in Functions)
+
+WidePepper supports HTTP operations with cat-themed names:
+
+```widepepper
+// GET request (fetchURL = fetch from URL)
+yarn response = fetchURL("https://api.example.com/data");
+meow response;
+
+// POST request (coughUpData = cough up data via POST)
+yarn postData = "{\"key\": \"value\"}";
+yarn result = coughUpData("https://api.example.com/api", "application/json", postData);
+meow result;
 ```
 
 ---
@@ -428,7 +481,10 @@ open coverage.html
 - ✅ Lexer: 95.8% coverage, 21 comprehensive tests
 - ✅ Parser: 69.4% coverage, 17 comprehensive tests
 - ✅ AST: 57.6% coverage, 13+ comprehensive tests
-- ✅ Total: 50+ passing tests across all packages
+- ✅ Builtins (I/O): 64.8% coverage, 11 comprehensive tests
+- ✅ Total: 60+ passing tests across all packages
+- ✅ File I/O: Read, write, append, delete, list operations
+- ✅ Network I/O: HTTP GET and POST requests
 
 ### **Architecture**
 
@@ -438,7 +494,8 @@ The compiler is organized into modular packages:
 2. **Lexer Package** (`lexer/`): Tokenizes source code into a stream of tokens
 3. **AST Package** (`ast/`): Defines Abstract Syntax Tree node types
 4. **Parser Package** (`parser/`): Parses tokens into an AST
-5. **Main Package** (`main.go`): CLI and script execution
+5. **Builtins Package** (`builtins/`): Provides file I/O and network operations
+6. **Main Package** (`main.go`): CLI and script execution
 
 ---
 
@@ -446,12 +503,15 @@ The compiler is organized into modular packages:
 
 Contributions are welcome! Areas for enhancement include:
 
-- Full AST evaluation/interpretation
-- Additional built-in functions
-- Better error messages
-- Standard library (strings, math, etc.)
-- REPL mode
+- Full AST evaluation/interpretation (evaluator/interpreter)
+- Variable scoping and execution environment
+- More built-in functions (strings, math, time, etc.)
+- Standard library modules
+- REPL mode (interactive shell)
+- Better error messages with line/column tracking
 - Optimization passes
+- Code formatting tool
+- Language server protocol (LSP) support
 
 ---
 

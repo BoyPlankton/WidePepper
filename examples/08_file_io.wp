@@ -1,0 +1,21 @@
+// WidePepper - File I/O Example
+// Demonstrates file I/O concepts
+// Note: Full I/O functionality requires an interpreter/evaluator
+
+// File I/O operations are available through the builtins package:
+// - pounceFile(path, mode)  - Open a file ("r"=read, "w"=write, "a"=append)
+// - lapLine(handle)         - Read one line
+// - devourFile(handle)      - Read entire file
+// - scratchLine(handle, s)  - Write line with newline
+// - scratchString(handle, s)- Write without newline
+// - nuzzleClose(handle)     - Close file handle
+// - sniffFile(path)         - Check if file exists
+// - swatFile(path)          - Delete file
+// - pounceDirectory(path)   - List directory files
+
+// Example structure (parser support only):
+yarn greeting = "File I/O Support Added!";
+meow greeting;
+
+// For now, meow is the only output mechanism
+meow "I/O functions are built-in but require interpreter implementation";

@@ -14,7 +14,7 @@ import (
 	"widepepper/parser"
 )
 
-const version = "1.0.0"
+const version = "1.1.0"
 
 func main() {
 	// Define command-line flags
