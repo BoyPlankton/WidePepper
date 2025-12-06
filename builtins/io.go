@@ -86,6 +86,7 @@ func (m *FileHandleManager) Close() error {
 	m.handles = make(map[int]*FileHandle)
 	return firstErr
 }
+
 // PounceFile opens a file for reading or writing (pounce = open)
 func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error) {
 	// Validate and sanitize the file path
