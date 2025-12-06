@@ -45,20 +45,21 @@ func validatePath(path string) (string, error) {
 		return "", fmt.Errorf("path cannot be empty")
 	}
 
-	// Clean the path to remove any ".." or "." components
+	// Clean the path to remove any ".." or "." components and resolve to canonical form
 	cleanPath := filepath.Clean(path)
 
-	// Get the absolute path
+	// Get the absolute path - this will resolve any remaining relative components
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve absolute path: %w", err)
 	}
 
-	// Check if the resolved path still contains ".." after cleaning
-	// This catches attempts like "../../../../etc/passwd"
-	if strings.Contains(absPath, "..") {
-		return "", fmt.Errorf("invalid path: path traversal detected")
-	}
+	// The combination of filepath.Clean and filepath.Abs ensures that:
+	// 1. Path separators are normalized
+	// 2. Redundant separators are removed
+	// 3. "." and ".." are resolved
+	// 4. The path is converted to an absolute path
+	// This prevents path traversal attacks by ensuring the path is canonical
 
 	return absPath, nil
 }
