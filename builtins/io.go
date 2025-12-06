@@ -15,17 +15,21 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
+
+// DefaultHTTPTimeout is the default timeout for HTTP requests
+const DefaultHTTPTimeout = 30 * time.Second
 
 // FileHandle represents an open file or network resource
 type FileHandle struct {
-	ID         int
-	Reader     io.Reader
-	Writer     io.Writer
-	Closer     io.Closer
-	FilePath   string
-	IsNetwork  bool
-	BufReader  *bufio.Reader
+	ID        int
+	Reader    io.Reader
+	Writer    io.Writer
+	Closer    io.Closer
+	FilePath  string
+	IsNetwork bool
+	BufReader *bufio.Reader
 }
 
 // FileHandleManager manages open file and network handles.
@@ -34,9 +38,10 @@ type FileHandle struct {
 // If multiple goroutines need to read/write the same handle concurrently,
 // the caller is responsible for appropriate synchronization.
 type FileHandleManager struct {
-	mu      sync.RWMutex
-	handles map[int]*FileHandle
-	nextID  int
+	mu         sync.RWMutex
+	handles    map[int]*FileHandle
+	nextID     int
+	httpClient *http.Client
 }
 
 // NewFileHandleManager creates a new file handle manager
