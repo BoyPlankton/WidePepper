@@ -15,6 +15,11 @@ import (
 	"time"
 )
 
+const (
+	// DefaultHTTPTimeout is the default timeout for HTTP requests
+	DefaultHTTPTimeout = 30 * time.Second
+)
+
 // FileHandle represents an open file or network resource
 type FileHandle struct {
 	ID        int
@@ -38,7 +43,7 @@ func NewFileHandleManager() *FileHandleManager {
 		handles: make(map[int]*FileHandle),
 		nextID:  1,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: DefaultHTTPTimeout,
 		},
 	}
 }
