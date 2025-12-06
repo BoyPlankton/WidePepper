@@ -1,4 +1,4 @@
-.PHONY: help build test clean run install lint fmt vet coverage bench
+.PHONY: help build test clean run install lint fmt vet coverage bench run-all-examples
 
 # Variables
 BINARY_NAME=widepepper
@@ -23,6 +23,7 @@ help:
 	@echo "  bench       - Run benchmarks"
 	@echo "  clean       - Remove build artifacts and coverage files"
 	@echo "  run-example - Run an example script (EXAMPLE=01_hello_world)"
+	@echo "  run-all-examples - Run all examples and report failures"
 	@echo "  run-tokens  - Run lexer tokens on a script (EXAMPLE=01_hello_world)"
 	@echo "  lint        - Run linter (if golangci-lint installed)"
 	@echo "  fmt         - Format all Go source files"
@@ -98,6 +99,24 @@ run-example: build
 			echo "Error: examples/$(EXAMPLE).wp not found"; \
 			exit 1; \
 		fi; \
+	fi
+
+# Run all examples and report failures
+run-all-examples: build
+	@echo "Running all examples..."
+	@failed_examples=""; \
+	for example in examples/*.wp; do \
+		name=$$(basename "$$example" .wp); \
+		if ! $(BINARY_PATH) "$$example" > /dev/null 2>&1; then \
+			failed_examples="$$failed_examples\n  - $$name"; \
+		fi; \
+	done; \
+	if [ -z "$$failed_examples" ]; then \
+		echo "✓ All examples ran successfully"; \
+	else \
+		echo "✗ Failed examples:"; \
+		echo -e "$$failed_examples"; \
+		exit 1; \
 	fi
 
 # Show tokens for an example script
