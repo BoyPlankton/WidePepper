@@ -193,6 +193,112 @@ func TestSwatFile(t *testing.T) {
 	}
 }
 
+func TestSwatFile_ProtectedDirectories(t *testing.T) {
+	// Test that we cannot delete files in protected directories
+	protectedPaths := []string{
+		"/etc/passwd",
+		"/bin/sh",
+		"/usr/bin/ls",
+		"/sbin/init",
+		"/boot/vmlinuz",
+		"/sys/kernel",
+		"/proc/cpuinfo",
+		"/dev/null",
+		"/lib/libc.so",
+		"/root/.bashrc",
+	}
+
+	for _, path := range protectedPaths {
+		err := SwatFile(path)
+		if err == nil {
+			t.Errorf("expected error when trying to delete protected file: %s", path)
+		}
+		if !strings.Contains(err.Error(), "protected directory") {
+			t.Errorf("expected 'protected directory' error for %s, got: %v", path, err)
+		}
+	}
+}
+
+func TestSwatFile_HomeDirectory(t *testing.T) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("could not get home directory")
+	}
+
+	err = SwatFile(homeDir)
+	if err == nil {
+		t.Error("expected error when trying to delete home directory")
+	}
+	if !strings.Contains(err.Error(), "home directory") {
+		t.Errorf("expected 'home directory' error, got: %v", err)
+	}
+}
+
+func TestSwatFile_CurrentWorkingDirectory(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Skip("could not get current working directory")
+	}
+
+	err = SwatFile(cwd)
+	if err == nil {
+		t.Error("expected error when trying to delete current working directory")
+	}
+	if !strings.Contains(err.Error(), "current working directory") {
+		t.Errorf("expected 'current working directory' error, got: %v", err)
+	}
+}
+
+func TestSwatFile_PathTraversal(t *testing.T) {
+	testDir := t.TempDir()
+
+	// Create a test file in temp directory
+	testFile := filepath.Join(testDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Try to delete using path traversal that would go to /etc
+	// This should fail because the absolute path would resolve to /etc
+	err = SwatFile(filepath.Join(testDir, "../../../../../../../etc/passwd"))
+	if err == nil {
+		t.Error("expected error for path traversal attempt")
+	}
+}
+
+func TestSwatFile_RelativePath(t *testing.T) {
+	testDir := t.TempDir()
+	testFile := filepath.Join(testDir, "relative_test.txt")
+
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Change to test directory
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get current directory: %v", err)
+	}
+	defer os.Chdir(oldDir)
+
+	err = os.Chdir(testDir)
+	if err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
+	// Delete using relative path
+	err = SwatFile("relative_test.txt")
+	if err != nil {
+		t.Fatalf("failed to delete file with relative path: %v", err)
+	}
+
+	if SniffFile(testFile) {
+		t.Error("expected file to be deleted")
+	}
+}
+
 func TestPounceDirectory(t *testing.T) {
 	testDir := t.TempDir()
 

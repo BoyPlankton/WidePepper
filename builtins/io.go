@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -204,8 +205,64 @@ func SniffFile(filePath string) bool {
 	return err == nil
 }
 
+// validateFilePath checks if a file path is safe for deletion
+// It prevents deletion of critical system files and restricts to safe directories
+func validateFilePath(filePath string) error {
+	// Convert to absolute path
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("invalid file path: %w", err)
+	}
+
+	// Clean the path to remove .. and .
+	cleanPath := filepath.Clean(absPath)
+
+	// List of protected directories that should never be deleted from
+	protectedDirs := []string{
+		"/etc",
+		"/bin",
+		"/sbin",
+		"/usr/bin",
+		"/usr/sbin",
+		"/boot",
+		"/sys",
+		"/proc",
+		"/dev",
+		"/lib",
+		"/lib64",
+		"/var/lib",
+		"/usr/lib",
+		"/root",
+	}
+
+	// Check if the file is in a protected directory
+	for _, protected := range protectedDirs {
+		if strings.HasPrefix(cleanPath, protected+string(filepath.Separator)) || cleanPath == protected {
+			return fmt.Errorf("cannot delete files in protected directory: %s", protected)
+		}
+	}
+
+	// Prevent deletion of home directory itself
+	homeDir, err := os.UserHomeDir()
+	if err == nil && cleanPath == homeDir {
+		return fmt.Errorf("cannot delete home directory")
+	}
+
+	// Prevent deletion of current working directory
+	cwd, err := os.Getwd()
+	if err == nil && cleanPath == cwd {
+		return fmt.Errorf("cannot delete current working directory")
+	}
+
+	return nil
+}
+
 // SwatFile deletes a file (swat = hit/delete)
+// It validates the file path to prevent deletion of critical system files
 func SwatFile(filePath string) error {
+	if err := validateFilePath(filePath); err != nil {
+		return err
+	}
 	return os.Remove(filePath)
 }
 
