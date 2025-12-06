@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -38,24 +39,53 @@ func NewFileHandleManager() *FileHandleManager {
 	}
 }
 
+// validatePath sanitizes and validates a file path to prevent path traversal attacks
+func validatePath(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("path cannot be empty")
+	}
+
+	// Clean the path to remove any ".." or "." components
+	cleanPath := filepath.Clean(path)
+
+	// Get the absolute path
+	absPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve absolute path: %w", err)
+	}
+
+	// Check if the resolved path still contains ".." after cleaning
+	// This catches attempts like "../../../../etc/passwd"
+	if strings.Contains(absPath, "..") {
+		return "", fmt.Errorf("invalid path: path traversal detected")
+	}
+
+	return absPath, nil
+}
+
 // PounceFile opens a file for reading or writing (pounce = open)
 func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error) {
+	// Validate and sanitize the file path
+	validPath, err := validatePath(filePath)
+	if err != nil {
+		return 0, fmt.Errorf("invalid file path: %w", err)
+	}
+
 	var file *os.File
-	var err error
 
 	switch strings.ToLower(mode) {
 	case "r", "read":
-		file, err = os.Open(filePath)
+		file, err = os.Open(validPath)
 		if err != nil {
 			return 0, fmt.Errorf("failed to open file for reading: %w", err)
 		}
 	case "w", "write":
-		file, err = os.Create(filePath)
+		file, err = os.Create(validPath)
 		if err != nil {
 			return 0, fmt.Errorf("failed to open file for writing: %w", err)
 		}
 	case "a", "append":
-		file, err = os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		file, err = os.OpenFile(validPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return 0, fmt.Errorf("failed to open file for appending: %w", err)
 		}
@@ -71,7 +101,7 @@ func (m *FileHandleManager) PounceFile(filePath string, mode string) (int, error
 		Reader:    file,
 		Writer:    file,
 		Closer:    file,
-		FilePath:  filePath,
+		FilePath:  validPath,
 		IsNetwork: false,
 	}
 
@@ -200,18 +230,36 @@ func (m *FileHandleManager) CoughUpData(url string, contentType string, data str
 
 // SniffFile checks if a file exists (sniff = check)
 func SniffFile(filePath string) bool {
-	_, err := os.Stat(filePath)
+	// Validate and sanitize the file path
+	validPath, err := validatePath(filePath)
+	if err != nil {
+		return false
+	}
+
+	_, err = os.Stat(validPath)
 	return err == nil
 }
 
 // SwatFile deletes a file (swat = hit/delete)
 func SwatFile(filePath string) error {
-	return os.Remove(filePath)
+	// Validate and sanitize the file path
+	validPath, err := validatePath(filePath)
+	if err != nil {
+		return fmt.Errorf("invalid file path: %w", err)
+	}
+
+	return os.Remove(validPath)
 }
 
 // PounceDirectory lists files in a directory (pounce = explore)
 func PounceDirectory(dirPath string) ([]string, error) {
-	entries, err := os.ReadDir(dirPath)
+	// Validate and sanitize the directory path
+	validPath, err := validatePath(dirPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid directory path: %w", err)
+	}
+
+	entries, err := os.ReadDir(validPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list directory: %w", err)
 	}
