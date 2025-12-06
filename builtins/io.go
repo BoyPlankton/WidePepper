@@ -338,7 +338,7 @@ func SniffFile(filePath string) bool {
 	validPath, err := validatePath(filePath)
 	if err != nil {
 		return false
-
+	}
 	_, err = os.Stat(validPath)
 	return err == nil
 }
