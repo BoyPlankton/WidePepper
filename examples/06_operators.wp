@@ -1,0 +1,51 @@
+// WidePepper - Operators and Expressions
+// Demonstrates various operators: arithmetic, comparison, and logical
+
+// Arithmetic operators
+yarn a = 10;
+yarn b = 3;
+yarn add = a + b;
+yarn subtract = a - b;
+yarn multiply = a * b;
+yarn divide = a / b;
+
+meow add;
+meow subtract;
+meow multiply;
+meow divide;
+
+// Comparison operators
+yarn x = 5;
+yarn y = 10;
+
+pounce (x < y) {
+    meow "x is less than y";
+}
+
+pounce (x == y) {
+    meow "x equals y";
+} hiss {
+    meow "x does not equal y";
+}
+
+pounce (x != y) {
+    meow "x is not equal to y";
+}
+
+// Logical operators
+yarn is_sunny = catnip;
+yarn is_warm = catnip;
+
+pounce (is_sunny && is_warm) {
+    meow "Perfect nap weather!";
+}
+
+pounce (is_sunny || is_warm) {
+    meow "Nice day outside";
+}
+
+pounce (!is_sunny) {
+    meow "It's cloudy";
+} hiss {
+    meow "It's sunny";
+}

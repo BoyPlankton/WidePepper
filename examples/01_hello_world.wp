@@ -1,0 +1,5 @@
+// WidePepper - Hello World Example
+// The simplest program: declare a variable and print it
+
+yarn greeting = "Hello, WidePepper World!";
+meow greeting;

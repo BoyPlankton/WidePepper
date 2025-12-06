@@ -1,0 +1,20 @@
+// WidePepper - Conditional Statements (pounce/hiss)
+// Demonstrates if/else logic
+
+yarn age = 7;
+yarn is_indoor = catnip;
+
+pounce (age > 10) {
+    meow "Senior kitty!";
+} hiss {
+    meow "Young and energetic!";
+}
+
+// Nested conditions
+pounce (age > 5) {
+    pounce (is_indoor) {
+        meow "Indoor adult cat";
+    } hiss {
+        meow "Outdoor adult cat";
+    }
+}

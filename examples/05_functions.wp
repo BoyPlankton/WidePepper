@@ -1,0 +1,39 @@
+// WidePepper - Functions (purr)
+// Demonstrates function definition and return statements
+
+purr greet(name) {
+    yarn message = "Meow, ";
+    treat message;
+}
+
+purr add_numbers(a, b) {
+    yarn sum = a + b;
+    treat sum;
+}
+
+purr is_adult_cat(age) {
+    pounce (age >= 3) {
+        treat catnip;
+    } hiss {
+        treat mice;
+    }
+}
+
+// Function composition
+purr calculate_cat_years(human_years) {
+    pounce (human_years == 1) {
+        treat 15;
+    } hiss {
+        pounce (human_years == 2) {
+            treat 24;
+        } hiss {
+            yarn result = 24 + (human_years - 2) * 4;
+            treat result;
+        }
+    }
+}
+
+// Using functions
+yarn age = 5;
+yarn cat_years = calculate_cat_years(age);
+meow cat_years;

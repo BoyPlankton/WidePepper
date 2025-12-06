@@ -1,0 +1,56 @@
+// WidePepper - Complex Example: Cat Behavior Simulator
+// Combines functions, conditionals, and loops
+
+purr cat_mood(energy, hunger) {
+    yarn mood = "unknown";
+    
+    pounce (energy > 80) {
+        pounce (hunger > 50) {
+            mood = "crazy and hungry";
+        } hiss {
+            mood = "playful";
+        }
+    } hiss {
+        pounce (hunger > 70) {
+            mood = "demanding food";
+        } hiss {
+            mood = "sleepy";
+        }
+    }
+    
+    treat mood;
+}
+
+purr simulate_day() {
+    yarn hour = 0;
+    yarn energy = 50;
+    yarn hunger = 30;
+    
+    chase (hour < 24) {
+        // Time progression affects state
+        pounce (hour > 6 && hour < 9) {
+            energy = energy + 20;
+            meow "Morning zoomies!";
+        } hiss {
+            pounce (hour > 21) {
+                energy = energy + 30;
+                meow "Night zoomies!";
+            } hiss {
+                energy = energy - 5;
+            }
+        }
+        
+        hunger = hunger + 1;
+        
+        // Get current mood
+        yarn current_mood = cat_mood(energy, hunger);
+        meow current_mood;
+        
+        hour = hour + 1;
+    }
+}
+
+// Run simulation
+meow "Starting cat behavior simulation...";
+simulate_day();
+meow "Simulation complete!";

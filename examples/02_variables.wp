@@ -1,0 +1,14 @@
+// WidePepper - Variables and Basic Operators
+// Demonstrates variable declarations and arithmetic operations
+
+yarn cat_name = "Whiskers";
+yarn age = 5;
+yarn weight = 12.5;
+
+// Perform calculations
+yarn years_left = 20 - age;
+yarn new_weight = weight + 2;
+
+meow cat_name;
+meow age;
+meow new_weight;
